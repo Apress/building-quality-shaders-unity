@@ -1,0 +1,43 @@
+#pragma kernel InitializeOffsets;
+#pragma kernel ApplyOffsets
+
+struct SnowActorInfo
+{
+	float3 position;
+	float radius;
+};
+
+RWTexture2D<float4> _SnowOffset;
+uniform float2 _SnowResolution;
+uniform float _SnowFalloff;
+
+StructuredBuffer<SnowActorInfo> _SnowActors;
+uniform int _SnowActorCount;
+
+[numthreads(8, 8, 1)]
+void InitializeOffsets(uint3 id : SV_DispatchThreadID)
+{
+	_SnowOffset[id.xy] = 1.0f;
+}
+
+float inverseLerp(float a, float b, float t)
+{
+	return (t - a) / (b - a);
+}
+
+[numthreads(8, 8, 1)]
+void ApplyOffsets(uint3 id : SV_DispatchThreadID)
+{
+	for (int i = 0; i < _SnowActorCount; i++)
+	{
+		float2 threadPos = float2(id.x, id.y) / _SnowResolution;
+
+		float dist = distance(threadPos, 1.0f - _SnowActors[i].position.xz);
+
+		float heightMod = inverseLerp(_SnowActors[i].radius, _SnowActors[i].radius + _SnowFalloff, dist);
+		heightMod = saturate(heightMod);
+
+		float newHeight = lerp(_SnowActors[i].position.y, _SnowOffset[id.xy], heightMod);
+		_SnowOffset[id.xy] = min(newHeight, _SnowOffset[id.xy]);
+	}
+}

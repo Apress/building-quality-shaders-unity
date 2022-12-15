@@ -1,0 +1,68 @@
+#pragma kernel TerrainOffsets
+
+StructuredBuffer<int> _TerrainTriangles;
+StructuredBuffer<float3> _TerrainPositions;
+
+RWStructuredBuffer<float4x4> _TransformMatrices;
+uniform int _TerrainTriangleCount;
+uniform float _Scale;
+uniform float2 _MinMaxBladeHeight;
+uniform float4x4 _TerrainObjectToWorld;
+
+#define TWO_PI 6.28318530718f
+
+float randomRange(float2 seed, float min, float max)
+{
+	float randnum = frac(sin(dot(seed, float2(12.9898, 78.233)))*43758.5453);
+	return lerp(min, max, randnum);
+}
+
+float4x4 rotationMatrixY(float angle)
+{
+	float s, c;
+	sincos(angle, s, c);
+
+	return float4x4
+	(
+		 c, 0, s, 0,
+		 0, 1, 0, 0,
+		-s, 0, c, 0,
+		 0, 0, 0, 1
+	);
+}
+
+[numthreads(64, 1, 1)]
+void TerrainOffsets(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x > _TerrainTriangleCount)
+	{
+		return;
+	}
+
+	int triStart = id.x * 3;
+	float3 posA = _TerrainPositions[_TerrainTriangles[triStart]];
+	float3 posB = _TerrainPositions[_TerrainTriangles[triStart + 1]];
+	float3 posC = _TerrainPositions[_TerrainTriangles[triStart + 2]];
+
+	float3 triangleCenterPos = (posA + posB + posC) / 3.0f;
+
+	float2 randomSeed1 = float2(id.x, id.y);
+	float2 randomSeed2 = float2(id.y, id.x);
+
+	float scaleY = _Scale * randomRange(randomSeed1, _MinMaxBladeHeight.x, _MinMaxBladeHeight.y);
+
+	float offsetX = randomRange(randomSeed1, -0.2f, 0.2f);
+	float offsetZ = randomRange(randomSeed2, -0.2f, 0.2f);
+
+	float4x4 grassTransformMatrix = float4x4
+	(
+		_Scale,	0,		0,		triangleCenterPos.x + offsetX,
+		0,		scaleY,	0,		triangleCenterPos.y,
+		0,		0,		_Scale,	triangleCenterPos.z + offsetZ,
+		0,		0,		0,		1
+	);
+
+	float4x4 randomRotationMatrix = rotationMatrixY(randomRange(randomSeed1, 0.0f, TWO_PI));
+
+	_TransformMatrices[id.x] = mul(_TerrainObjectToWorld, mul(grassTransformMatrix, randomRotationMatrix));
+}
